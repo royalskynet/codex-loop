@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# codex-plan <prompt.md> <ticket.md> <repo>：Codex 照 prompt 寫一張工單（唯讀沙箱，工單取自最後一則訊息）；rc 由 deep-lint 判定。
+# 環境變數：CODEXLOOP_EFFORT（推理強度，預設 medium）、CODEXLOOP_MODEL（預設用 codex 自己的預設）、
+# CODEXLOOP_SESSION（續用同一個 codex session：session id 或 last）、CODEXLOOP_FULL_CONFIG=1（載入使用者 config 與規則檔，預設不載入以省 token）、
+# CODEXLOOP_LINT（預設 deep-lint；設成 true 可跳過）。
+set -u
+[ $# -eq 3 ] || { echo "usage: codex-plan <prompt.md> <ticket.md> <repo>" >&2; exit 2; }
+p="$1"; t="$2"; repo="$3"
+[ -s "$p" ] || { echo "codex-plan: prompt 不存在或是空的：$p" >&2; exit 2; }
+command -v codex >/dev/null || { echo "codex-plan: 找不到 codex（https://github.com/openai/codex）" >&2; exit 2; }
+[ -d "$repo" ] || { echo "codex-plan: repo 不是資料夾：$repo" >&2; exit 2; }
+mkdir -p "$(dirname "$t")"
+t="$(cd "$(dirname "$t")" && pwd)/$(basename "$t")"
+p="$(cd "$(dirname "$p")" && pwd)/$(basename "$p")"
+rm -f "$t"
+args=(--skip-git-repo-check -c "model_reasoning_effort=${CODEXLOOP_EFFORT:-medium}" -c model_verbosity=low -o "$t")
+[ "${CODEXLOOP_FULL_CONFIG:-0}" = 1 ] || args+=(--ignore-user-config --ignore-rules)
+[ -n "${CODEXLOOP_MODEL:-}" ] && args+=(-m "$CODEXLOOP_MODEL")
+log="$(mktemp)"; trap 'rm -f "$log"' EXIT
+msg="工作 repo（唯讀參考）：${repo}。你不能寫檔：最後一則訊息就是工單全文，不加前言、結語或程式碼圍欄。任務如下：
+$(cat "$p")"
+cd "$repo" || exit 2
+if [ -n "${CODEXLOOP_SESSION:-}" ]; then
+  sid="$CODEXLOOP_SESSION"; [ "$sid" = last ] && sid=--last
+  printf '%s' "$msg" | codex exec resume "${args[@]}" -c sandbox_mode=read-only "$sid" - >/dev/null 2>"$log"
+else
+  printf '%s' "$msg" | codex exec -s read-only "${args[@]}" - >/dev/null 2>"$log"
+fi
+rc=$?
+echo "codex rc=$rc" >&2
+sed -n 's/^session id: \(.*\)$/codex-plan: session id \1（下輪 CODEXLOOP_SESSION=\1）/p' "$log" | head -1 >&2
+awk '/^tokens used$/{getline; print "codex-plan: tokens used " $0}' "$log" | tail -1 >&2
+[ "$rc" -eq 0 ] || tail -5 "$log" >&2
+[ -s "$t" ] || { echo "codex-plan: 工單沒寫出 $t" >&2; exit 3; }
+# 模型偶爾把整張工單包進圍欄：首行是 ``` 且末行是 ``` 時去掉
+if [ "$(head -1 "$t" | cut -c1-3)" = '```' ] && [ "$(tail -1 "$t")" = '```' ]; then
+  sed '1d;$d' "$t" > "$t.tmp" && mv "$t.tmp" "$t"
+fi
+${CODEXLOOP_LINT:-deep-lint} "$t"
