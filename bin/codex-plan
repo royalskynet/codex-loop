@@ -12,8 +12,8 @@ command -v codex >/dev/null || { echo "codex-plan: 找不到 codex（https://git
 mkdir -p "$(dirname "$t")"
 t="$(cd "$(dirname "$t")" && pwd)/$(basename "$t")"
 p="$(cd "$(dirname "$p")" && pwd)/$(basename "$p")"
-rm -f "$t"
-args=(--skip-git-repo-check -c "model_reasoning_effort=${CODEXLOOP_EFFORT:-medium}" -c model_verbosity=low -o "$t")
+new="$t.new"; rm -f "$new"
+args=(--skip-git-repo-check -c "model_reasoning_effort=${CODEXLOOP_EFFORT:-medium}" -c model_verbosity=low -o "$new")
 [ "${CODEXLOOP_FULL_CONFIG:-0}" = 1 ] || args+=(--ignore-user-config --ignore-rules)
 [ -n "${CODEXLOOP_MODEL:-}" ] && args+=(-m "$CODEXLOOP_MODEL")
 log="$(mktemp)"; trap 'rm -f "$log"' EXIT
@@ -31,7 +31,8 @@ echo "codex rc=$rc" >&2
 sed -n 's/^session id: \(.*\)$/codex-plan: session id \1（下輪 CODEXLOOP_SESSION=\1）/p' "$log" | head -1 >&2
 awk '/^tokens used$/{getline; print "codex-plan: tokens used " $0}' "$log" | tail -1 >&2
 [ "$rc" -eq 0 ] || tail -5 "$log" >&2
-[ -s "$t" ] || { echo "codex-plan: 工單沒寫出 $t" >&2; exit 3; }
+[ -s "$new" ] || { rm -f "$new"; echo "codex-plan: 工單沒寫出 ${t}（原檔未動）" >&2; exit 3; }
+mv "$new" "$t"
 # 模型偶爾把整張工單包進圍欄：首行是 ``` 且末行是 ``` 時去掉
 if [ "$(head -1 "$t" | cut -c1-3)" = '```' ] && [ "$(tail -1 "$t")" = '```' ]; then
   sed '1d;$d' "$t" > "$t.tmp" && mv "$t.tmp" "$t"

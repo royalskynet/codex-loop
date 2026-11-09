@@ -59,4 +59,11 @@ check "回報 token 用量" "$(printf '%s' "$out" | grep -c 'tokens used 4,321')
 CODEXLOOP_LINT=true FAKE_WRITE=1 FAKE_FENCE=1 plan >/dev/null 2>&1
 check "整張工單被圍欄包住 → 去圍欄" "$(head -1 "$tmp/out/t.md")" '輪子：設定'
 check "去圍欄後行數正確" "$(wc -l < "$tmp/out/t.md" | tr -d ' ')" 3
+# 退回修改：目標檔已存在時，跑的過程中它必須還在；沒寫出新工單時原檔不能被刪
+printf 'OLD\n' > "$tmp/out/t.md"
+CODEXLOOP_LINT=true FAKE_WRITE=0 plan >/dev/null 2>&1
+check "沒寫出新工單 → 原檔保留" "$(cat "$tmp/out/t.md")" OLD
+CODEXLOOP_LINT=true FAKE_WRITE=1 plan >/dev/null 2>&1
+check "寫出新工單 → 覆蓋原檔" "$(head -1 "$tmp/out/t.md")" '輪子：設定'
+check "不留 .new 殘檔" "$(ls "$tmp/out" | grep -c 'new$')" 0
 exit $fail
