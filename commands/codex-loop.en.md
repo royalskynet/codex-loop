@@ -37,6 +37,7 @@ Codex usage is charged to your OpenAI plan quota or API bill; whatever the main 
 **Fewer rounds**
 - Tests first: split behaviour changes into two tickets, first "write tests only, must be red on the old code", then "change the implementation only, tests untouched". The executor may neither change the implementation without adding tests nor change tests to fit the implementation.
 - Every acceptance block carries a line that fails when nothing was changed (negative control). If Codex cannot write one, the requirement is not clear yet; first have Codex list the ambiguities (borrowed from spec-kit clarify).
+- Implementation work orders (no test paths in writes) start the acceptance block with `git checkout <base> -- <test paths>`: as SWE-bench does (v4.1.0 `swebench/harness/test_spec/python.py` L405–455), restore the tests to their pre-task version before running them, so edited, deleted or skipped tests cannot change the verdict. Worktrees only; never in a main checkout holding someone else's uncommitted changes (it would overwrite them). Test work orders skip this line and are guarded by diff review.
 - The first audit's `--note` demands an exhaustive sweep of the defect class (does the same pattern recur elsewhere); later rounds audit only this round's diff and whether last round's accepts are fixed; newly found non-regression issues default to defer.
 - `--max-rounds` and the two-failure rule in section 4 apply as written; no extra retries.
 
